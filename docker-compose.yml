@@ -1,0 +1,35 @@
+services:
+  frontend:
+    image: loomin-docs-frontend:offline
+    build:
+      context: ./frontend
+    environment:
+      NEXT_PUBLIC_API_BASE: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  backend:
+    image: loomin-docs-backend:offline
+    build:
+      context: ./backend
+    environment:
+      UPLOAD_ROOT: /mnt/uploads
+      DB_PATH: /mnt/uploads/loomin.sqlite3
+      AUDIT_LOG: /mnt/uploads/audit.log
+      OLLAMA_URL: http://ollama:11434
+      LLAMA_MODEL: loomin-llama3
+      MISTRAL_MODEL: loomin-mistral
+      CONTEXT_WINDOW: "8192"
+    ports:
+      - "8000:8000"
+    volumes:
+      - /mnt/uploads:/mnt/uploads
+    depends_on:
+      - ollama
+
+  ollama:
+    image: loomin-docs-ollama:offline
+    ports:
+      - "11434:11434"
