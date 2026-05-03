@@ -6,15 +6,15 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-
 from .config import ALLOWED_EXTENSIONS
 from .security import ensure_inside, sanitize_for_llm, sha256_file
 
 try:
+    import numpy as np  # type: ignore
     import faiss  # type: ignore
     from sentence_transformers import SentenceTransformer  # type: ignore
 except Exception:  # pragma: no cover - intentionally supports Pyodide-like fallbacks
+    np = None
     faiss = None
     SentenceTransformer = None
 
@@ -36,11 +36,12 @@ class Embedder:
             except Exception:
                 self.model = None
 
-    def encode(self, texts: list[str]) -> np.ndarray:
+    def encode(self, texts: list[str]):
         if self.model:
             vectors = self.model.encode(texts, normalize_embeddings=True)
-            return np.asarray(vectors, dtype="float32")
-        return np.asarray([hash_embedding(text) for text in texts], dtype="float32")
+            return np.asarray(vectors, dtype="float32") if np else vectors
+        vectors = [hash_embedding(text) for text in texts]
+        return np.asarray(vectors, dtype="float32") if np else vectors
 
 
 def hash_embedding(text: str, dims: int = 384) -> list[float]:
@@ -87,7 +88,7 @@ class RagIndex:
         self.user_rag_dir = user_rag_dir
         self.embedder = Embedder()
         self.chunks: list[Chunk] = []
-        self.matrix: np.ndarray | None = None
+        self.matrix = None
         self.index = None
 
     def build(self) -> None:
@@ -102,7 +103,7 @@ class RagIndex:
             self.index = None
             return
         self.matrix = self.embedder.encode([c.text for c in chunks])
-        if faiss:
+        if faiss and np is not None:
             self.index = faiss.IndexFlatIP(self.matrix.shape[1])
             self.index.add(self.matrix)
 
@@ -115,9 +116,17 @@ class RagIndex:
         if self.index:
             scores, ids = self.index.search(query, min(limit, len(self.chunks)))
             return [Chunk(**{**self.chunks[int(i)].__dict__, "score": float(scores[0][pos])}) for pos, i in enumerate(ids[0]) if i >= 0]
-        scores = self.matrix @ query[0]
-        ranked = np.argsort(scores)[::-1][:limit]
-        return [Chunk(**{**self.chunks[int(i)].__dict__, "score": float(scores[int(i)])}) for i in ranked]
+        if np is not None:
+            scores = self.matrix @ query[0]
+            ranked = np.argsort(scores)[::-1][:limit]
+            return [Chunk(**{**self.chunks[int(i)].__dict__, "score": float(scores[int(i)])}) for i in ranked]
+        query_vector = query[0]
+        scored = [
+            (sum(a * b for a, b in zip(vector, query_vector)), idx)
+            for idx, vector in enumerate(self.matrix)
+        ]
+        scored.sort(reverse=True)
+        return [Chunk(**{**self.chunks[idx].__dict__, "score": float(score)}) for score, idx in scored[:limit]]
 
 
 def file_record(path: Path) -> dict[str, object]:

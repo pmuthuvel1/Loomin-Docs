@@ -1,0 +1,6 @@
+# Optional full RAG dependencies for a connected staging build.
+# The default image intentionally avoids these native/heavy packages so local
+# Windows/WSL testing does not compile NumPy or download large model stacks.
+numpy==2.2.0
+faiss-cpu==1.9.0.post1
+sentence-transformers==3.3.1

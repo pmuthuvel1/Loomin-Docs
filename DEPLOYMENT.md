@@ -21,6 +21,27 @@ Backend health:
 http://localhost:8000/health
 ```
 
+### Windows + WSL Local Ollama
+
+If Ollama runs on Windows and Docker runs from WSL or Docker Desktop, use the local compose file. This file does not start the air-gapped Ollama container; it points the backend to your Windows Ollama instance.
+
+```bash
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+If `host.docker.internal` does not resolve inside WSL, find the Windows host IP:
+
+```bash
+awk '/nameserver/ {print $2; exit}' /etc/resolv.conf
+```
+
+Then pass it explicitly:
+
+```bash
+OLLAMA_URL=http://WINDOWS_HOST_IP:11434 \
+docker compose -f docker-compose.local.yml up -d --build
+```
+
 ## 2. Prepare Air-Gapped Bundle
 
 Run these steps on an internet-connected Linux or RHEL-compatible staging machine.
@@ -68,6 +89,19 @@ tar -czf loomin-docs-bootstrap.tar.gz \
 
 Copy `loomin-docs-bootstrap.tar.gz` to the VM.
 
+The first required step on the air-gapped VM is installing Docker from the bundled RPMs. The archive must already contain all Docker Engine and Compose RPM dependencies under `deploy/offline-bundle/rpms`.
+
+Manual Docker install command:
+
+```bash
+sudo dnf install -y deploy/offline-bundle/rpms/*.rpm
+sudo systemctl enable --now docker
+docker --version
+docker compose version
+```
+
+The provided setup script performs this Docker installation automatically before loading images and starting the app:
+
 ```bash
 tar -xzf loomin-docs-bootstrap.tar.gz
 chmod +x deploy/setup.sh
@@ -80,4 +114,34 @@ Open:
 
 ```text
 http://localhost:3000
+```
+
+## 4. Backend RAG Dependency Modes
+
+The default backend image installs only lightweight Python dependencies. This makes local Windows/WSL testing reliable and avoids compiling NumPy inside a slim Python image.
+
+Default local RAG mode:
+
+- uses deterministic hashed embeddings
+- performs local retrieval over uploaded files
+- requires no FAISS, NumPy, Torch, or SentenceTransformers
+
+Optional full RAG dependencies are listed in:
+
+```text
+backend/requirements-rag-full.txt
+```
+
+Use that file only on a connected staging machine where wheels are available or native builds are expected. The application code automatically uses FAISS and `all-MiniLM-L6-v2` when those packages and local model files are present; otherwise it falls back to the no-native local retriever.
+
+The backend Dockerfile defaults to:
+
+```text
+python:3.12-slim-bookworm
+```
+
+This is intentional for local and air-gapped reliability. Python `3.14` can trigger native builds for packages such as `pydantic-core`, which then require Rust and a C linker in the image. To override the base image on a connected staging machine:
+
+```bash
+docker build --build-arg PYTHON_IMAGE=python:3.14.4-slim-bookworm -t loomin-docs-backend:py314 backend
 ```

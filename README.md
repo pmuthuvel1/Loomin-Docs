@@ -2,7 +2,7 @@
 
 Loomin Docs is an air-gapped collaborative text editor with a React/Next.js workspace, Python/FastAPI RAG engine, SQLite persistence, local file isolation, and Ollama-backed AI assistance.
 
-Current version choices were checked on May 3, 2026: React `19.2`, Next.js `16.2.4`, and Python `3.14.4`.
+Current version choices were checked on May 3, 2026: React `19.2`, Next.js `16.2.4`, and Python `3.14.4`. The backend Docker image defaults to Python `3.12-slim-bookworm` because the FastAPI/Pydantic ecosystem has reliable prebuilt wheels there; Python `3.14` can force native Rust/C builds in slim images.
 
 ## Repository
 
@@ -147,3 +147,17 @@ The script verifies that retrieval is grounded in a local fixture and does not i
 The production backend is FastAPI in Docker. The RAG implementation also contains a no-install fallback path that avoids subprocess and package installation assumptions: if FAISS or SentenceTransformers are unavailable, it uses deterministic local hash embeddings and cosine ranking over files already present under `/mnt/uploads`.
 
 For a strict browser-Pyodide evaluator, `backend/app/pyodide_engine.py` is pure standard library code. It uses `os.listdir('/mnt/uploads')`, reads only user-scoped `.md` and `.txt` files, and performs local hashed-vector retrieval without package installation.
+
+## Backend Dependency Modes
+
+`backend/requirements.txt` is the default local/runtime dependency set and intentionally avoids native ML packages. This prevents local Docker builds from compiling NumPy in slim Python images.
+
+`backend/requirements-rag-full.txt` lists optional FAISS, NumPy, and SentenceTransformers dependencies for a connected staging build. When those packages and local model files are present, `backend/app/rag.py` uses them. Otherwise it falls back to deterministic local hash embeddings.
+
+The backend Dockerfile accepts a Python image override:
+
+```bash
+docker build --build-arg PYTHON_IMAGE=python:3.14.4-slim-bookworm -t loomin-docs-backend:py314 backend
+```
+
+Use that only if you also provide the compiler/Rust toolchain or a fully prebuilt wheelhouse. For normal local and air-gapped runtime builds, keep the default Python `3.12` image.

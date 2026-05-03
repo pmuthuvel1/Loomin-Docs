@@ -1,0 +1,8 @@
+services:
+  backend:
+    environment:
+      # For Docker Desktop this usually works from containers.
+      # If Docker is running inside WSL and this name does not resolve, replace
+      # it with the Windows host IP from:
+      #   awk '/nameserver/ {print $2; exit}' /etc/resolv.conf
+      OLLAMA_URL: ${OLLAMA_URL:-http://host.docker.internal:11434}
